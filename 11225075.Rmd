@@ -1,0 +1,402 @@
+---
+title: "11225075"
+author: "oanh"
+date: "2025-02-10"
+output: word_document
+---
+
+```{r}
+library(Metrics)
+library(tseries)
+library(urca)
+library(Hmisc)
+library(forecast)
+library(car)
+library(ggplot2)
+library(tidyverse)
+library(cowplot)
+```
+```{r}
+library(readxl)
+data <- read_excel("D:/Môn học kì 6/Timeseries/CTG doanh thu.xlsx")
+names(data)=c("Doanhthu")
+View(data)
+attach(data)
+```
+
+## 1. Định dạng số liệu thời gian tạo biến time và biến mùa vụ 
+```{r}
+# Định dạng số liệu thời gian
+DT <- ts(data$Doanhthu, start=c(2010,1), frequency = 4)
+# Tạo biến xu thế thời gian
+t <- seq_along(DT)					
+summary(t)
+
+```
+```{r}
+# Đồ thị 
+library(ggplot2)
+library(dplyr)
+dt_plot <- data.frame(Time = time(DT), Revenue = DT)
+dt_plot %>% ggplot(aes(x=Time,y=Revenue)) +
+  geom_line(col="dodgerblue3", size=1.5) +
+  geom_point(col="darkblue") + 
+  theme_minimal() +
+  labs(title="Doanh thu của CTG giai đoạn 2010-2024") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+## 2. Các mô hình dự báo ( 2010-2024)
+### Chia dữ liệu thành traning set
+
+
+```{r}
+DT_train <- ts(Doanhthu[1:56], start=c(2010,1), frequency = 4)
+t_train <- seq_along(DT_train)
+summary(t_train)
+
+```
+# 1. Mô hình lin - lin 
+
+```{r}
+reg1 <- lm(DT_train ~ t_train)
+summary(reg1)
+rmse(DT_train, fitted(reg1))
+mape(DT_train, fitted(reg1))
+```
+# 2. Mô hình lin-log
+```{r}
+reg2 <- lm(DT_train ~ log(t_train))
+summary(reg2)
+rmse(DT_train, fitted(reg2))
+mape(DT_train, fitted(reg2))
+```
+
+# 3. Mô hình log - lin 
+```{r}
+reg3 <- lm(log(DT_train) ~ t_train)
+summary(reg3)
+rmse(DT_train, exp(fitted(reg3)))
+mape(DT_train, exp(fitted(reg3)))
+
+```
+# 4. Mô hình log - log 
+```{r}
+reg4 <- lm(log(DT_train) ~ log(t_train))
+summary(reg4)
+rmse(DT_train, exp(fitted(reg4)))
+mape(DT_train, exp(fitted(reg4)))
+```
+# 5. Hồi quy với biến giả mùa vụ 
+```{r}
+s1 <- c(rep(c(1,0,0,0), 14))			
+s2 <- c(rep(c(0,1,0,0), 14))
+s3 <- c(rep(c(0,0,1,0), 14))
+s4 <- c(rep(c(0,0,0,1), 14))
+
+reg5 <- lm(DT_train ~ s2 + s3 + s4)
+summary(reg5)
+rmse(DT_train, fitted(reg5))
+mape(DT_train, fitted(reg5))
+
+```
+# 6. Xu thế tuyến tính + Mùa vụ dạng cộng 
+```{r}
+reg6 <- lm(DT_train ~ t_train + s2 + s3 + s4)
+summary(reg6)
+rmse(DT_train, fitted(reg6))
+mape(DT_train, fitted(reg6))
+```
+#7. Xu thế tuyến tính + Mùa vụ dạng nhân 
+```{r}
+reg7 <- lm(DT_train ~ t_train + I(t_train*s2) + I(t_train*s3)+ I(t_train*s4))
+summary(reg7)
+rmse(DT_train, fitted(reg7))
+mape(DT_train, fitted(reg7))
+```
+# 8. Xu thế không tuyến tính + Mùa vụ dạng cộng  
+```{r}
+reg8 <- lm(log(DT_train) ~ t_train + s2 + s3 + s4)
+summary(reg8)
+rmse(DT_train, exp(fitted(reg8)))
+mape(DT_train, exp(fitted(reg8)))
+```
+# 9. Xu thế không tuyến tính + Mùa vụ dạng nhân 
+```{r}
+reg9 <- lm(log(DT_train) ~ t_train + I(t_train*s2) + I(t_train*s3)+ I(t_train*s4))
+summary(reg9)
+rmse(DT_train, exp(fitted(reg9)))
+mape(DT_train, exp(fitted(reg9)))
+```
+# 10. Holt-Winter có mùa vụ dạng cộng 
+```{r}
+hw.dt.train.a <- HoltWinters(DT_train, seasonal = "a")   #a là "additive"
+hw.dt.train.a
+rmse(DT_train, fitted(hw.dt.train.a)[,1])
+mape(DT_train, fitted(hw.dt.train.a)[,1])
+```
+
+# 11. Holt-Winter có mùa vụ dạng nhân 
+```{r}
+hw.dt.train.m <- HoltWinters(DT_train, seasonal = "m")  # m là "multiplicative"
+hw.dt.train.m
+rmse(DT_train, fitted(hw.dt.train.m)[,1])
+mape(DT_train, fitted(hw.dt.train.m)[,1])
+```
+# Holt - Winter có mùa vụ dạng cộng trên toàn dữ liệu 2010 - 2024 
+```{r}
+hw.dt.all.a <- HoltWinters(DT, seasonal = "a")  # m là "multiplicative"
+hw.dt.all.a
+```
+
+### Chuỗi giá và log-return 
+
+```{r}
+library(readxl)
+Chuỗi_giá_cổ_phiếu <- read_excel("D:/Môn học kì 6/Timeseries/Chuỗi giá cổ phiếu.xlsx")
+attach(Chuỗi_giá_cổ_phiếu)
+```
+```{r}
+price <- ts(Price[1:499], start=1, frequency=1)
+logreturn <- ts(`Log-return(%)`[1:499], start=1, frequency=1)
+```
+
+
+```{r}
+plot1 <- Chuỗi_giá_cổ_phiếu  %>% ggplot(aes(x=Date,y=ts(Price))) +
+  geom_line(color="blue1", size=1.2) +
+  geom_smooth(linetype="dashed", color="#1E90FF")+
+  labs(x="Date", y="Price") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+  scale_y_continuous(position="left", limits=c(1000,40000)) +
+  theme_cowplot()
+plot1
+
+plot2 <- Chuỗi_giá_cổ_phiếu %>% ggplot(aes(x=Date, y=ts(`Log-return(%)`))) +
+  geom_line(color="indianred2", size = 0.8) +
+  scale_y_continuous(position="right", limits=c(-20,20)) +
+  labs(x="Date", y="Log return") +
+  theme_cowplot()
+plot2
+```
+
+# 1. Kiểm định ADF cho chuỗi giá 
+```{r}
+summary(ur.df(Chuỗi_giá_cổ_phiếu$Price,type="none",lag=0))
+summary(ur.df(Chuỗi_giá_cổ_phiếu$Price,type="drift",lag=0))
+summary(ur.df(Chuỗi_giá_cổ_phiếu$Price,type="trend",lag = 0))
+```
+# 2. Kiểm định ADF cho chuỗi log-return
+```{r}
+Data1<- Chuỗi_giá_cổ_phiếu[!is.na(Chuỗi_giá_cổ_phiếu$`Log-return(%)`), ]
+summary(ur.df(Data1$`Log-return(%)`,type="trend"))
+summary(ur.df(Data1$`Log-return(%)`,type="drift"))
+summary(ur.df(Data1$`Log-return(%)`,type="none"))
+```
+
+# 3. Xem ACF, PACF của chuỗi log return
+```{r}
+acf(Data1$`Log-return(%)`)
+pacf(Data1$`Log-return(%)`)
+```
+
+Đề xuất mô hình ARIMA(4,0,3) , ARIMA(2,0,2)
+
+# 3.1 Ước lượng mô hình ARIMA
+
+```{r}
+#ARIMA(0,0,4)
+reg.loisuat.arima004=Arima(Data1$`Log-return(%)`,order=c(0,0,4),include.constant = TRUE)
+summary(reg.loisuat.arima004)
+
+#ARIMA(2,0,2)
+reg.loisuat.arima202=Arima(Data1$`Log-return(%)`,order=c(2,0,2),include.constant = TRUE)
+summary(reg.loisuat.arima202)
+
+```
+# 3.2 Xem tính dừng qua nghiệm nghịch đảo 
+```{r}
+autoplot(reg.loisuat.arima004)
+autoplot(reg.loisuat.arima202)
+```
+
+# 3.3 Kiểm định tính nhiễu trắng của phần dư 
+```{r}
+checkresiduals(reg.loisuat.arima004)
+checkresiduals(reg.loisuat.arima202)
+```
+
+# 3.4 Dự báo log-return
+```{r}
+logf.arima004<-forecast(reg.loisuat.arima004,h=10)
+logf.arima004
+
+logf.arima202<-forecast(reg.loisuat.arima202,h=10)
+logf.arima202
+```
+```{r}
+log_real <- ts(Chuỗi_giá_cổ_phiếu$`Log-return(%)`, start=501, end=510, frequency=1)
+```
+
+```{r}
+# ARIMA(0,0,4)
+rmse(log_real, logf.arima004$mean)
+mape(log_real, logf.arima004$mean)
+# ARIMA(2,0,2)
+rmse(log_real, logf.arima202$mean)
+mape(log_real, logf.arima202$mean)
+```
+# dự báo giá cổ phiếu 10 phiên đầu năm 2025
+```{r}
+logf004 <- data.frame(logf.arima004$mean)
+logf202 <- data.frame(logf.arima202$mean)
+
+# ARIMA(0,0,4)
+price_f1 <- exp(logf004[1,1]/100)*Chuỗi_giá_cổ_phiếu$Price[501]  # Giá phiên 1 
+
+k <- nrow(logf004)
+price_f <- rep(0,k)
+# Tạo vòng lặp để tính giá 
+for(i in 2:k){
+  price_f[1] <- price_f1
+ price_f[i] <- exp(logf004[i,1]/100)*price_f[i-1]
+}
+price_f    # Giá 10 phiên 
+
+# sai số ARIMA(0,0,4)
+close_real <- ts(Chuỗi_giá_cổ_phiếu$Price[500:509], start=501, end=510, frequency=1)
+rmse(close_real, price_f)
+mape(close_real, price_f)
+
+# ARIMA(2,0,2)
+gia_f1 <- exp(logf202[1,1]/100)*Chuỗi_giá_cổ_phiếu$Price[501]  # Giá phiên 1 
+
+h <- nrow(logf202)
+gia_f <- rep(0,h)
+# Tạo vòng lặp để tính giá 
+for(i in 2:h){
+  gia_f[1] <- gia_f1
+ gia_f[i] <- exp(logf202[i,1]/100)*gia_f[i-1]
+}
+gia_f    # Giá 10 phiên 
+
+# sai số ARIMA(2,0,2)
+rmse(close_real, gia_f)
+mape(close_real, gia_f)
+```
+
+
+
+
+## Với sai phân của chuỗi price
+```{r}
+Chuỗi_giá_cổ_phiếu <- Chuỗi_giá_cổ_phiếu %>%
+  mutate(dPrice = c(NA, diff(Price)))  # thêm giá trị NA đầu tiên để giữ cùng chiều dài
+plot3 <- Chuỗi_giá_cổ_phiếu %>% 
+  ggplot(aes(x = Date, y = dPrice)) +
+  geom_line(color = "blue1", size = 0.8) +
+  geom_smooth(linetype = "dashed", color = "#1E90FF") +
+  labs(x = "Date", y = "Sai phân giá (ΔPrice)") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+  theme_cowplot()
+plot3
+```
+
+```{r}
+## KD ADF có xu thế
+summary(ur.df(diff(price), type="trend"))
+## KD ADF chỉ có hệ số chặn
+summary(ur.df(diff(price),type = "drift"))
+## KD ADF none
+summary(ur.df(diff(price),type = "none"))
+```
+```{r}
+acf(diff(Price))
+pacf(diff(Price))
+```
+Đề xuất mô hình ARIMA(1,1,1,), ARIMA(4,1,4), ARIMA(1,1,4), ARIMA(4,1,1)
+
+
+```{r}
+reg.price.arima111 <- Arima(price, order = c(1,1,1), include.constant = TRUE)
+summary(reg.price.arima111)
+reg.price.arima414 <- Arima(price, order = c(4,1,4), include.constant = TRUE)
+summary(reg.price.arima414)
+reg.price.arima114 <- Arima(price, order = c(1,1,4), include.constant = TRUE)
+summary(reg.price.arima114)
+reg.price.arima411 <- Arima(price, order = c(4,1,1), include.constant = TRUE)
+summary(reg.price.arima411)
+```
+```{r}
+autoplot(reg.price.arima111)
+autoplot(reg.price.arima414)
+autoplot(reg.price.arima114)
+autoplot(reg.price.arima411)
+```
+
+```{r}
+checkresiduals(reg.price.arima111)
+checkresiduals(reg.price.arima414)
+checkresiduals(reg.price.arima114)
+checkresiduals(reg.price.arima411)
+```
+```{r}
+pricef.arima111 <- forecast(reg.price.arima111,h=10)
+pricef.arima111
+pricef.arima414 <- forecast(reg.price.arima414,h=10)
+pricef.arima414
+pricef.arima114 <- forecast(reg.price.arima114,h=10)
+pricef.arima114
+pricef.arima411 <- forecast(reg.price.arima411,h=10)
+pricef.arima411
+```
+```{r}
+close_real <- ts(Chuỗi_giá_cổ_phiếu$Price[500:509], start=500, end=509, frequency=1)
+# ARIMA(1,1,1)
+rmse(close_real, pricef.arima111$mean)
+mape(close_real, pricef.arima111$mean)
+# ARIMA(4,1,4)
+rmse(close_real, pricef.arima414$mean)
+mape(close_real, pricef.arima414$mean)
+# ARIMA(1,1,4)
+rmse(close_real, pricef.arima114$mean)
+mape(close_real, pricef.arima114$mean)
+# ARIMA(4,1,1)
+rmse(close_real, pricef.arima411$mean)
+mape(close_real, pricef.arima411$mean)
+```
+
+### Mô hình ARCH - GARCH
+
+# Mô hình ARIMA(4,1,4) là mô hình tốt nhất cho dự báo chuỗi giá=> ARMA(4,4)
+```{r}
+# lấy sai phân
+dprice <- diff(price)
+# lấy phần dư
+dprice1 <- dprice - fitted(reg.price.arima414)
+# bình phương phần dư
+resid.arima414 <- dprice1^2
+ts.plot(resid.arima414)
+pacf(resid.arima414)
+```
+```{r}
+library(fGarch)
+g1 <- garchFit(~arma(4,4)+garch(1,1), data=dprice, trace=FALSE)
+summary(g1)
+```
+```{r}
+library(rugarch)
+model <- ugarchspec(variance.model=list(model="iGARCH",garchOrder=c(1,1)),
+                    mean.model=list(armaOrder=c(4,4)))
+model_fit <- ugarchfit(model,dprice)
+model_fit
+```
+```{r}
+f2025 <- ugarchforecast(model_fit, n.ahead = 10)
+f2025
+```
+
+
+
+
+
